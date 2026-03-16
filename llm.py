@@ -1,59 +1,75 @@
-import requests
- 
-OLLAMA_API = "http://localhost:11434/api/generate"
- 
-def generate_answer(question, context, profile, funds):
- 
-    prompt = f"""
-You are an AI financial advisor.
- 
-User Risk Profile: {profile}
- 
-Recommended Mutual Funds:
-{funds}
- 
-Knowledge Context:
-{context}
- 
-User Question:
-{question}
- 
-Give a helpful explanation in simple language.
 """
- 
+llm.py — LLM Integration using Ollama (Llama3)
+Sends prompts to the local Ollama API and returns generated text.
+"""
+
+import requests
+import json
+from typing import Optional
+
+OLLAMA_URL = "http://localhost:11434/api/generate"
+MODEL_NAME = "qwen2.5:7b"
+
+
+def build_prompt(question, age, horizon, risk_level, risk_profile, recommended_funds, context):
+    funds_str = ", ".join(recommended_funds[:2])  # only top 2 funds
+    return f"""You are a mutual fund advisor. Answer briefly in 2-3 short paragraphs.
+
+Investor: Age {age}, {horizon} yr horizon, {risk_level} risk, {risk_profile} profile.
+Funds: {funds_str}
+
+Question: {question}
+
+Give short, direct advice only."""
+
+    return prompt
+
+
+def query_llm(prompt: str, timeout: int = 300) -> str:
+    """
+    Send a prompt to Ollama's Llama3 model and return the full response text.
+    Falls back to a structured message if Ollama is unavailable.
+    """
     payload = {
-        "model": "llama3",
+        "model": MODEL_NAME,
         "prompt": prompt,
-        "stream": False
+        "stream": False,
+        "options": {
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "num_predict": 200,
+        },
     }
- 
-    # Fix: catch all request errors so the endpoint returns a friendly message
-    # instead of a 500 crash when Ollama is unavailable or times out
+
     try:
-        response = requests.post(OLLAMA_API, json=payload, timeout=15)
+        response = requests.post(OLLAMA_URL, json=payload, timeout=timeout)
         response.raise_for_status()
+        data = response.json()
+        return data.get("response", "No response generated.").strip()
+
     except requests.exceptions.ConnectionError:
-        return "LLM unavailable: Could not connect to Ollama. Please ensure it is running on http://localhost:11434."
+        return _fallback_response(prompt)
     except requests.exceptions.Timeout:
-        return "LLM unavailable: Request to Ollama timed out after 15 seconds."
-    except requests.exceptions.RequestException as e:
-        return f"LLM unavailable: {str(e)}"
- 
-    result = response.json()
- 
-    # Ollama typically returns a top-level "response" or a list of results
-    if isinstance(result, dict) and "response" in result:
-        return result["response"]
- 
-    # Fallback: try to extract from the first result entry
-    if isinstance(result, dict) and "results" in result and isinstance(result["results"], list):
-        first = result["results"][0]
-        if isinstance(first, dict) and "response" in first:
-            return first["response"]
-        if isinstance(first, dict) and "content" in first and isinstance(first["content"], list):
-            for chunk in first["content"]:
-                if isinstance(chunk, dict) and chunk.get("type") == "output_text":
-                    return chunk.get("text", "")
- 
-    # If we get here, return raw JSON as a fallback string
-    return str(result)
+        return "⚠️ The LLM took too long to respond. Please try again or simplify your question."
+    except Exception as e:
+        return f"⚠️ LLM error: {str(e)}"
+
+
+def _fallback_response(prompt: str) -> str:
+    """Return a helpful fallback when Ollama is not running."""
+    return (
+        "⚠️ **Ollama LLM is not running locally.**\n\n"
+        "To enable AI-powered advice:\n"
+        "1. Install Ollama from https://ollama.com\n"
+        "2. Run: `ollama pull llama3`\n"
+        "3. Start the server: `ollama serve`\n"
+        "4. Retry your question.\n\n"
+        "---\n"
+        "**In the meantime, here is general guidance based on your profile:**\n\n"
+        "Based on the information you provided, consider the following:\n"
+        "- Start with a diversified hybrid or index fund via SIP.\n"
+        "- Invest consistently every month regardless of market conditions.\n"
+        "- Review your portfolio every 6-12 months.\n"
+        "- Ensure you have an emergency fund before investing in equity.\n"
+        "- Consult a SEBI-registered investment advisor for personalized advice."
+    )
