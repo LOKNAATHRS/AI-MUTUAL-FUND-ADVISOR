@@ -24,7 +24,7 @@ Then open: http://localhost:8000
 
 ### 3) LLM Backend (Ollama)
 
-The `llm.py` client expects an Ollama server running on `http://localhost:11434` and a model named `llama3`.
+The `llm.py` client expects an Ollama server running on `http://localhost:11434` .
 If you are not running Ollama, the AI answer generation will fail.
 
 ## 🧠 Files
